@@ -523,31 +523,6 @@
               });
         });
 
-        // ==========================================
-        // 8. SIMULATOR DUMMY (DISESUAIKAN BEBAN RUMAH TANGGA)
-        // ==========================================
-        setInterval(() => {
-            const aktual_kW = Math.random() * 0.20 + 0.15; 
-            const pred_15m_kW = aktual_kW + (Math.random() * 0.04 - 0.02); 
-            const pred_1h_kW = aktual_kW + (Math.random() * 0.08 - 0.04); 
-            const pred_24h_kW = aktual_kW + (Math.random() * 0.10 - 0.05); 
-
-            const ts = Date.now();
-            const payload = {
-                timestamp: ts,
-                aktual: aktual_kW,
-                pred_15m: pred_15m_kW,
-                pred_1h: pred_1h_kW,
-                pred_24h: pred_24h_kW
-            };
-
-            // Update node Realtime untuk Kartu
-            db.ref('sensor_listrik').set(payload);
-            
-            // Simpan log ke History (Agar bisa diunduh berdasarkan rentang waktu)
-            db.ref('sensor_history').push(payload);
-        }, 2000);
-
     </script>
 </body>
 </html>
