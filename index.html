@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="id" class="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard AI Pemantauan Beban Listrik</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans p-6 transition-colors duration-300">
+
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-8 border-b dark:border-slate-800 pb-4 flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-slate-900 dark:text-white">Sistem Prediksi Beban Listrik AI</h1>
+                <p class="text-slate-500 dark:text-slate-400 mt-1">Pemantauan Aktual dan Hasil Inferensi Model LSTM</p>
+            </div>
+            <div class="flex gap-3">
+                <button id="unitToggle" class="bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-700/50 px-4 py-2 rounded-lg shadow-sm text-sm font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition flex items-center gap-2">
+                    🔄 Satuan: <span id="btnUnitLabel" class="font-bold">Watt</span>
+                </button>
+                <button id="themeToggle" class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-2 rounded-lg shadow-sm text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-700 transition">
+                    🌙 Mode Gelap
+                </button>
+            </div>
+        </header>
+
+        <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 mb-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="md:col-span-2 flex flex-col justify-between">
+                <div>
+                    <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">Pengaturan Batasan Daya (Threshold Alert)</h3>
+                    <div class="flex flex-wrap gap-4 items-end">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Pilih Target Pengawasan</label>
+                            <select id="thresholdTarget" class="w-48 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="aktual">Beban Aktual</option>
+                                <option value="pred_15m">Prediksi +15 Menit</option>
+                                <option value="pred_1h">Prediksi +1 Jam</option>
+                                <option value="pred_24h">Prediksi +24 Jam</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Batas Maksimal (<span class="unit-label">W</span>)</label>
+                            <input type="number" id="thresholdValue" step="1" value="500" class="w-36 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        <button id="btnSetThreshold" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition shadow-sm">
+                            Tambah Batasan
+                        </button>
+                    </div>
+                </div>
+
+                <div id="alertBanner" class="hidden mt-6 p-4 bg-red-100 dark:bg-red-900/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg animate-pulse">
+                    <div class="flex gap-2 items-start">
+                        <span class="text-xl">⚠️</span>
+                        <div>
+                            <span class="font-bold block mb-1">PERINGATAN OVERLOAD SYSTEM:</span> 
+                            <ul id="alertList" class="list-disc list-inside space-y-1 text-sm"></ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-700 pt-4 md:pt-0 md:pl-6 flex flex-col">
+                <h4 class="text-sm font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Batasan Terpasang</h4>
+                <div id="thresholdBox" class="flex-1 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 space-y-2 max-h-[160px] overflow-y-auto">
+                    <p id="emptyText" class="text-sm text-slate-400 dark:text-slate-500 italic text-center py-4">Tidak ada batasan aktif.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+            <div id="card_aktual" class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 transition-all duration-200">
+                <h3 class="text-sm font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Beban Aktual</h3>
+                <div class="mt-2 flex items-baseline gap-2">
+                    <span id="valAktual" class="text-4xl font-bold text-blue-600 dark:text-blue-400">0.0</span>
+                    <span class="text-slate-500 dark:text-slate-400 font-medium unit-label">W</span>
+                </div>
+            </div>
+            <div id="card_pred_15m" class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 transition-all duration-200">
+                <h3 class="text-sm font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Prediksi +15 Menit</h3>
+                <div class="mt-2 flex items-baseline gap-2">
+                    <span id="valPred15m" class="text-4xl font-bold text-amber-500 dark:text-amber-400">0.0</span>
+                    <span class="text-slate-500 dark:text-slate-400 font-medium unit-label">W</span>
+                </div>
+            </div>
+            <div id="card_pred_1h" class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 transition-all duration-200">
+                <h3 class="text-sm font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Prediksi +1 Jam</h3>
+                <div class="mt-2 flex items-baseline gap-2">
+                    <span id="valPred1h" class="text-4xl font-bold text-rose-500 dark:text-rose-400">0.0</span>
+                    <span class="text-slate-500 dark:text-slate-400 font-medium unit-label">W</span>
+                </div>
+            </div>
+            <div id="card_pred_24h" class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 transition-all duration-200">
+                <h3 class="text-sm font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Prediksi +24 Jam</h3>
+                <div class="mt-2 flex items-baseline gap-2">
+                    <span id="valPred24h" class="text-4xl font-bold text-purple-600 dark:text-purple-400">0.0</span>
+                    <span class="text-slate-500 dark:text-slate-400 font-medium unit-label">W</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 mb-8">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">Evaluasi Model LSTM (Real-time Sesi Ini)</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="border-b border-slate-200 dark:border-slate-700 text-sm text-slate-500 dark:text-slate-400">
+                            <th class="py-3 px-4 font-semibold">Horizon Prediksi</th>
+                            <th class="py-3 px-4 font-semibold">RMSE (<span class="unit-label">W</span>)</th>
+                            <th class="py-3 px-4 font-semibold">MAE (<span class="unit-label">W</span>)</th>
+                            <th class="py-3 px-4 font-semibold">Error (%) / MAPE</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-sm">
+                        <tr class="border-b border-slate-100 dark:border-slate-800">
+                            <td class="py-3 px-4 font-medium text-slate-700 dark:text-slate-300">+15 Menit</td>
+                            <td class="py-3 px-4 text-slate-600 dark:text-slate-400 font-mono" id="metrik-rmse-15m">0.00</td>
+                            <td class="py-3 px-4 text-slate-600 dark:text-slate-400 font-mono" id="metrik-mae-15m">0.00</td>
+                            <td class="py-3 px-4 text-amber-600 dark:text-amber-400 font-medium font-mono" id="metrik-mape-15m">0.00%</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 dark:border-slate-800">
+                            <td class="py-3 px-4 font-medium text-slate-700 dark:text-slate-300">+1 Jam</td>
+                            <td class="py-3 px-4 text-slate-600 dark:text-slate-400 font-mono" id="metrik-rmse-1h">0.00</td>
+                            <td class="py-3 px-4 text-slate-600 dark:text-slate-400 font-mono" id="metrik-mae-1h">0.00</td>
+                            <td class="py-3 px-4 text-rose-600 dark:text-rose-400 font-medium font-mono" id="metrik-mape-1h">0.00%</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 dark:border-slate-800 bg-purple-50/30 dark:bg-purple-900/10">
+                            <td class="py-3 px-4 font-medium text-slate-700 dark:text-slate-300">+24 Jam</td>
+                            <td class="py-3 px-4 text-slate-600 dark:text-slate-400 font-mono" id="metrik-rmse-24h">0.00</td>
+                            <td class="py-3 px-4 text-slate-600 dark:text-slate-400 font-mono" id="metrik-mae-24h">0.00</td>
+                            <td class="py-3 px-4 text-purple-600 dark:text-purple-400 font-medium font-mono" id="metrik-mape-24h">0.00%</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="text-xs text-slate-400 mt-3">* Metrik dihitung secara akumulatif (rolling) berdasarkan data yang masuk selama halaman ini terbuka.</p>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 mb-8">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">Tren Konsumsi Daya Real-time</h3>
+            <div class="relative h-[400px] w-full">
+                <canvas id="bebanChart"></canvas>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">Unduh Historis Data (CSV)</h3>
+            <div class="flex flex-wrap gap-4 items-end">
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Mulai Waktu</label>
+                    <input type="datetime-local" id="filterStart" class="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Sampai Waktu</label>
+                    <input type="datetime-local" id="filterEnd" class="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <button id="btnDownloadRange" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-6 rounded-lg transition shadow-sm flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Unduh CSV
+                </button>
+            </div>
+            <p id="downloadStatus" class="text-sm text-emerald-600 dark:text-emerald-400 mt-3 hidden">Mengambil data dari server...</p>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. KONFIGURASI FIREBASE ANDA
+        // ==========================================
+        const firebaseConfig = {
+            databaseURL: "https://ta-lstm-default-rtdb.asia-southeast1.firebasedatabase.app/" 
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Variabel Global
+        let activeThresholds = [];
+        let lastFirebaseData = null;
+        let sessionHistory = []; 
+        
+        // Status Unit (Default: true = Watt, false = kW)
+        let isWatt = true; 
+
+        // Fungsi Helper Konversi Satuan
+        function getMultiplier() { return isWatt ? 1000 : 1; }
+        function getUnitString() { return isWatt ? 'W' : 'kW'; }
+        function formatValue(val) { return (val * getMultiplier()).toFixed(isWatt ? 1 : 3); }
+
+        // ==========================================
+        // 2. INISIALISASI CHART.JS
+        // ==========================================
+        const ctx = document.getElementById('bebanChart').getContext('2d');
+        const bebanChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    { label: 'Aktual (W)', borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.05)', data: [], tension: 0.3, fill: true },
+                    { label: 'Prediksi 15m (W)', borderColor: '#f59e0b', borderDash: [5, 5], data: [], tension: 0.3 },
+                    { label: 'Prediksi 1 Jam (W)', borderColor: '#e11d48', borderDash: [2, 2], data: [], tension: 0.3 },
+                    { label: 'Prediksi 24 Jam (W)', borderColor: '#9333ea', borderDash: [4, 1], data: [], tension: 0.3 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { 
+                        beginAtZero: false,
+                        grid: { color: 'rgba(148, 163, 184, 0.1)' }, 
+                        ticks: { color: '#64748b' }, 
+                        title: { display: true, text: 'Daya (Watt)', color: '#64748b' } 
+                    },
+                    x: { grid: { color: 'rgba(148, 163, 184, 0.1)' }, ticks: { color: '#64748b' }, title: { display: true, text: 'Waktu', color: '#64748b' } }
+                },
+                plugins: { legend: { labels: { color: '#64748b' } } },
+                animation: { duration: 400 }
+            }
+        });
+
+        // ==========================================
+        // 3. SWITCH THEME & SWITCH UNIT
+        // ==========================================
+        const themeToggleBtn = document.getElementById('themeToggle');
+        themeToggleBtn.addEventListener('click', () => {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                themeToggleBtn.innerText = "🌙 Mode Gelap";
+                updateChartTheme(false);
+            } else {
+                document.documentElement.classList.add('dark');
+                themeToggleBtn.innerText = "☀️ Mode Terang";
+                updateChartTheme(true);
+            }
+        });
+
+        function updateChartTheme(isDark) {
+            const textColor = isDark ? '#94a3b8' : '#64748b';
+            const gridColor = isDark ? 'rgba(51, 65, 85, 0.5)' : 'rgba(148, 163, 184, 0.1)';
+            bebanChart.options.scales.y.ticks.color = textColor;
+            bebanChart.options.scales.y.title.color = textColor;
+            bebanChart.options.scales.y.grid.color = gridColor;
+            bebanChart.options.scales.x.ticks.color = textColor;
+            bebanChart.options.scales.x.title.color = textColor;
+            bebanChart.options.scales.x.grid.color = gridColor;
+            bebanChart.options.plugins.legend.labels.color = textColor;
+            bebanChart.update();
+        }
+
+        document.getElementById('unitToggle').addEventListener('click', () => {
+            isWatt = !isWatt;
+            const unitStr = getUnitString();
+            
+            document.getElementById('btnUnitLabel').innerText = isWatt ? 'Watt' : 'kW';
+            document.querySelectorAll('.unit-label').forEach(el => el.innerText = unitStr);
+            
+            bebanChart.options.scales.y.title.text = `Daya (${isWatt ? 'Watt' : 'Kilowatt'})`;
+            bebanChart.data.datasets[0].label = `Aktual (${unitStr})`;
+            bebanChart.data.datasets[1].label = `Prediksi 15m (${unitStr})`;
+            bebanChart.data.datasets[2].label = `Prediksi 1 Jam (${unitStr})`;
+            bebanChart.data.datasets[3].label = `Prediksi 24 Jam (${unitStr})`;
+
+            rebuildChartAndMetrics();
+            if (lastFirebaseData) updateCards(lastFirebaseData);
+        });
+
+        // ==========================================
+        // 4. LOGIKA METRIK EVALUASI (RMSE, MAE, MAPE)
+        // ==========================================
+        function updateMetrics() {
+            if (sessionHistory.length === 0) return;
+
+            let se15 = 0, ae15 = 0, pe15 = 0;
+            let se1h = 0, ae1h = 0, pe1h = 0;
+            let se24 = 0, ae24 = 0, pe24 = 0;
+            
+            let count = sessionHistory.length;
+            const mult = getMultiplier();
+
+            sessionHistory.forEach(row => {
+                let act = row.aktual * mult;
+                let p15 = row.pred_15m * mult;
+                let p1h = row.pred_1h * mult;
+                let p24 = row.pred_24h * mult;
+
+                let e15 = act - p15;
+                let e1h = act - p1h;
+                let e24 = act - p24;
+
+                se15 += (e15 * e15); ae15 += Math.abs(e15); if(act > 0) pe15 += Math.abs(e15 / act);
+                se1h += (e1h * e1h); ae1h += Math.abs(e1h); if(act > 0) pe1h += Math.abs(e1h / act);
+                se24 += (e24 * e24); ae24 += Math.abs(e24); if(act > 0) pe24 += Math.abs(e24 / act);
+            });
+
+            const dec = isWatt ? 1 : 4; 
+
+            document.getElementById('metrik-rmse-15m').innerText = Math.sqrt(se15 / count).toFixed(dec);
+            document.getElementById('metrik-mae-15m').innerText = (ae15 / count).toFixed(dec);
+            document.getElementById('metrik-mape-15m').innerText = ((pe15 / count) * 100).toFixed(2) + '%';
+
+            document.getElementById('metrik-rmse-1h').innerText = Math.sqrt(se1h / count).toFixed(dec);
+            document.getElementById('metrik-mae-1h').innerText = (ae1h / count).toFixed(dec);
+            document.getElementById('metrik-mape-1h').innerText = ((pe1h / count) * 100).toFixed(2) + '%';
+
+            document.getElementById('metrik-rmse-24h').innerText = Math.sqrt(se24 / count).toFixed(dec);
+            document.getElementById('metrik-mae-24h').innerText = (ae24 / count).toFixed(dec);
+            document.getElementById('metrik-mape-24h').innerText = ((pe24 / count) * 100).toFixed(2) + '%';
+        }
+
+        function rebuildChartAndMetrics() {
+            bebanChart.data.datasets.forEach(dataset => dataset.data = []);
+            const mult = getMultiplier();
+            sessionHistory.forEach(row => {
+                bebanChart.data.datasets[0].data.push(row.aktual * mult);
+                bebanChart.data.datasets[1].data.push(row.pred_15m * mult);
+                bebanChart.data.datasets[2].data.push(row.pred_1h * mult);
+                bebanChart.data.datasets[3].data.push(row.pred_24h * mult);
+            });
+            bebanChart.update();
+            updateMetrics();
+            renderThresholds(); 
+        }
+
+        // ==========================================
+        // 5. MANAJEMEN LIST THRESHOLD & PERINGATAN
+        // ==========================================
+        document.getElementById('btnSetThreshold').addEventListener('click', () => {
+            const targetSelect = document.getElementById('thresholdTarget');
+            const targetKey = targetSelect.value;
+            const targetText = targetSelect.options[targetSelect.selectedIndex].text;
+            let limitVal = parseFloat(document.getElementById('thresholdValue').value);
+
+            if (isNaN(limitVal) || limitVal <= 0) return;
+
+            const rawValueKw = isWatt ? (limitVal / 1000) : limitVal;
+            activeThresholds.push({ id: Date.now(), key: targetKey, text: targetText, rawKw: rawValueKw });
+            renderThresholds();
+            if (lastFirebaseData) checkAllThresholds(lastFirebaseData);
+        });
+
+        function renderThresholds() {
+            const box = document.getElementById('thresholdBox');
+            box.innerHTML = '';
+
+            if (activeThresholds.length === 0) {
+                box.innerHTML = '<p class="text-sm text-slate-400 dark:text-slate-500 italic text-center py-4">Tidak ada batasan aktif.</p>';
+                return;
+            }
+
+            activeThresholds.forEach(t => {
+                const item = document.createElement('div');
+                item.className = "flex justify-between items-center bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs shadow-sm animate-fadeIn";
+                const displayVal = formatValue(t.rawKw);
+
+                item.innerHTML = `
+                    <div class="truncate">
+                        <span class="font-semibold text-slate-700 dark:text-slate-300">${t.text}</span>
+                        <span class="text-slate-400 mx-1">≥</span>
+                        <span class="font-mono text-blue-600 dark:text-blue-400 font-bold">${displayVal} ${getUnitString()}</span>
+                    </div>
+                    <button onclick="removeThreshold(${t.id})" class="text-red-500 hover:text-red-700 dark:hover:text-red-400 font-bold ml-2 focus:outline-none transition-colors">✕</button>
+                `;
+                box.appendChild(item);
+            });
+        }
+
+        window.removeThreshold = function(id) {
+            activeThresholds = activeThresholds.filter(item => item.id !== id);
+            renderThresholds();
+            ['card_aktual', 'card_pred_15m', 'card_pred_1h', 'card_pred_24h'].forEach(cid => {
+                document.getElementById(cid).classList.remove('bg-red-50', 'dark:bg-red-950/20', 'border-red-500');
+            });
+            if (lastFirebaseData) checkAllThresholds(lastFirebaseData);
+        }
+
+        function checkAllThresholds(data) {
+            ['card_aktual', 'card_pred_15m', 'card_pred_1h', 'card_pred_24h'].forEach(cid => {
+                document.getElementById(cid).classList.remove('bg-red-50', 'dark:bg-red-950/20', 'border-red-500');
+            });
+            
+            const alertBanner = document.getElementById('alertBanner');
+            const alertList = document.getElementById('alertList');
+            alertList.innerHTML = ''; 
+            let statusPelanggaran = [];
+
+            activeThresholds.forEach(t => {
+                const nilaiAktualKw = data[t.key];
+                if (nilaiAktualKw >= t.rawKw) {
+                    const dispAktual = formatValue(nilaiAktualKw);
+                    const dispBatas = formatValue(t.rawKw);
+                    const unit = getUnitString();
+
+                    statusPelanggaran.push(`Nilai <strong>${t.text}</strong> menyentuh <strong>${dispAktual} ${unit}</strong> (Batas Maksimal: ${dispBatas} ${unit})`);
+                    const targetCard = document.getElementById(`card_${t.key}`);
+                    if (targetCard) targetCard.classList.add('bg-red-50', 'dark:bg-red-950/20', 'border-red-500');
+                }
+            });
+
+            if (statusPelanggaran.length > 0) {
+                alertBanner.classList.remove('hidden');
+                statusPelanggaran.forEach(msg => {
+                    const li = document.createElement('li');
+                    li.innerHTML = msg;
+                    alertList.appendChild(li);
+                });
+            } else {
+                alertBanner.classList.add('hidden');
+            }
+        }
+
+        // ==========================================
+        // 6. UPDATE KARTU & FIREBASE REAL-TIME
+        // ==========================================
+        function updateCards(data) {
+            document.getElementById('valAktual').innerText = formatValue(data.aktual);
+            document.getElementById('valPred15m').innerText = formatValue(data.pred_15m);
+            document.getElementById('valPred1h').innerText = formatValue(data.pred_1h);
+            document.getElementById('valPred24h').innerText = formatValue(data.pred_24h);
+        }
+
+        db.ref('sensor_listrik').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                lastFirebaseData = data; 
+                sessionHistory.push(data);
+                
+                updateCards(data);
+                checkAllThresholds(data);
+                updateMetrics();
+
+                const now = new Date();
+                const timeString = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0') + ':' + now.getSeconds().toString().padStart(2, '0');
+
+                bebanChart.data.labels.push(timeString);
+                const mult = getMultiplier();
+                bebanChart.data.datasets[0].data.push(data.aktual * mult);
+                bebanChart.data.datasets[1].data.push(data.pred_15m * mult);
+                bebanChart.data.datasets[2].data.push(data.pred_1h * mult);
+                bebanChart.data.datasets[3].data.push(data.pred_24h * mult);
+
+                if (bebanChart.data.labels.length > 20) {
+                    bebanChart.data.labels.shift();
+                    bebanChart.data.datasets.forEach(dataset => dataset.data.shift());
+                }
+                bebanChart.update();
+            }
+        });
+
+        // ==========================================
+        // 7. UNDUH CSV DENGAN RENTANG WAKTU
+        // ==========================================
+        document.getElementById('btnDownloadRange').addEventListener('click', () => {
+            const startInput = document.getElementById('filterStart').value;
+            const endInput = document.getElementById('filterEnd').value;
+            const statusText = document.getElementById('downloadStatus');
+
+            if (!startInput || !endInput) {
+                alert("Mohon lengkapi rentang waktu (Mulai dan Sampai) terlebih dahulu.");
+                return;
+            }
+
+            const startTimestamp = new Date(startInput).getTime();
+            const endTimestamp = new Date(endInput).getTime();
+
+            statusText.classList.remove('hidden');
+            statusText.innerText = "Mengambil data riwayat dari Firebase...";
+
+            db.ref('sensor_history')
+              .orderByChild('timestamp')
+              .startAt(startTimestamp)
+              .endAt(endTimestamp)
+              .once('value')
+              .then((snapshot) => {
+                  const historyData = snapshot.val();
+                  if (!historyData) {
+                      statusText.innerText = "Data tidak ditemukan pada rentang waktu tersebut.";
+                      setTimeout(() => statusText.classList.add('hidden'), 3000);
+                      return;
+                  }
+
+                  const unit = getUnitString();
+                  const mult = getMultiplier();
+                  const dec = isWatt ? 1 : 4;
+
+                  let csvContent = `Tanggal & Waktu,Beban Aktual (${unit}),Prediksi +15m (${unit}),Prediksi +1h (${unit}),Prediksi +24h (${unit})\n`;
+                  
+                  const dataArray = Object.values(historyData).sort((a, b) => a.timestamp - b.timestamp);
+
+                  dataArray.forEach(row => {
+                      const dateObj = new Date(row.timestamp);
+                      const fmtDate = dateObj.toLocaleString('id-ID').replace(',', '');
+                      csvContent += `${fmtDate},${(row.aktual * mult).toFixed(dec)},${(row.pred_15m * mult).toFixed(dec)},${(row.pred_1h * mult).toFixed(dec)},${(row.pred_24h * mult).toFixed(dec)}\n`;
+                  });
+
+                  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement("a");
+                  link.setAttribute("href", url);
+                  link.setAttribute("download", `Log_Beban_${startInput}_to_${endInput}.csv`);
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  
+                  statusText.innerText = "Unduhan berhasil disiapkan!";
+                  setTimeout(() => statusText.classList.add('hidden'), 3000);
+              })
+              .catch(err => {
+                  console.error(err);
+                  statusText.innerText = "Terjadi kesalahan saat mengambil data.";
+                  statusText.classList.replace('text-emerald-600', 'text-red-500');
+              });
+        });
+
+        // ==========================================
+        // 8. SIMULATOR DUMMY (DISESUAIKAN BEBAN RUMAH TANGGA)
+        // ==========================================
+        setInterval(() => {
+            const aktual_kW = Math.random() * 0.20 + 0.15; 
+            const pred_15m_kW = aktual_kW + (Math.random() * 0.04 - 0.02); 
+            const pred_1h_kW = aktual_kW + (Math.random() * 0.08 - 0.04); 
+            const pred_24h_kW = aktual_kW + (Math.random() * 0.10 - 0.05); 
+
+            const ts = Date.now();
+            const payload = {
+                timestamp: ts,
+                aktual: aktual_kW,
+                pred_15m: pred_15m_kW,
+                pred_1h: pred_1h_kW,
+                pred_24h: pred_24h_kW
+            };
+
+            // Update node Realtime untuk Kartu
+            db.ref('sensor_listrik').set(payload);
+            
+            // Simpan log ke History (Agar bisa diunduh berdasarkan rentang waktu)
+            db.ref('sensor_history').push(payload);
+        }, 2000);
+
+    </script>
+</body>
+</html>
