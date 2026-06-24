@@ -459,33 +459,47 @@
         });
 
         // ==========================================
-        // 7. UNDUH CSV DENGAN RENTANG WAKTU
+        // 7. UNDUH CSV (RENTANG WAKTU ATAU KESELURUHAN)
         // ==========================================
         document.getElementById('btnDownloadRange').addEventListener('click', () => {
             const startInput = document.getElementById('filterStart').value;
             const endInput = document.getElementById('filterEnd').value;
             const statusText = document.getElementById('downloadStatus');
 
-            if (!startInput || !endInput) {
-                alert("Mohon lengkapi rentang waktu (Mulai dan Sampai) terlebih dahulu.");
+            // Logika pengecekan input waktu
+            let isDownloadAll = false;
+            if (!startInput && !endInput) {
+                // Jika keduanya kosong, aktifkan mode unduh semua data
+                isDownloadAll = true;
+            } else if (!startInput || !endInput) {
+                // Jika hanya salah satu yang diisi, beri peringatan
+                alert("Mohon lengkapi KEDUA rentang waktu (Mulai dan Sampai) jika ingin memfilter data, ATAU kosongkan keduanya untuk mengunduh seluruh data.");
                 return;
             }
 
-            const startTimestamp = new Date(startInput).getTime();
-            const endTimestamp = new Date(endInput).getTime();
-
             statusText.classList.remove('hidden');
-            statusText.innerText = "Mengambil data riwayat dari Firebase...";
+            statusText.classList.replace('text-red-500', 'text-emerald-600');
+            statusText.innerText = isDownloadAll 
+                ? "Mengambil seluruh data riwayat dari Firebase (mungkin butuh waktu)..." 
+                : "Mengambil data riwayat berdasarkan rentang waktu...";
 
-            db.ref('sensor_history')
-              .orderByChild('timestamp')
-              .startAt(startTimestamp)
-              .endAt(endTimestamp)
-              .once('value')
+            // Menentukan Query Firebase berdasarkan mode
+            let query = db.ref('sensor_history').orderByChild('timestamp');
+            
+            if (!isDownloadAll) {
+                const startTimestamp = new Date(startInput).getTime();
+                const endTimestamp = new Date(endInput).getTime();
+                query = query.startAt(startTimestamp).endAt(endTimestamp);
+            }
+
+            // Mengeksekusi Query
+            query.once('value')
               .then((snapshot) => {
                   const historyData = snapshot.val();
                   if (!historyData) {
-                      statusText.innerText = "Data tidak ditemukan pada rentang waktu tersebut.";
+                      statusText.innerText = isDownloadAll 
+                        ? "Belum ada riwayat data di dalam database." 
+                        : "Data tidak ditemukan pada rentang waktu tersebut.";
                       setTimeout(() => statusText.classList.add('hidden'), 3000);
                       return;
                   }
@@ -496,6 +510,7 @@
 
                   let csvContent = `Tanggal & Waktu,Beban Aktual (${unit}),Prediksi +15m (${unit}),Prediksi +1h (${unit}),Prediksi +24h (${unit})\n`;
                   
+                  // Mengurutkan data berdasarkan timestamp (waktu terlama ke terbaru)
                   const dataArray = Object.values(historyData).sort((a, b) => a.timestamp - b.timestamp);
 
                   dataArray.forEach(row => {
@@ -504,11 +519,18 @@
                       csvContent += `${fmtDate},${(row.aktual * mult).toFixed(dec)},${(row.pred_15m * mult).toFixed(dec)},${(row.pred_1h * mult).toFixed(dec)},${(row.pred_24h * mult).toFixed(dec)}\n`;
                   });
 
+                  // Trigger proses unduhan file
                   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                   const url = URL.createObjectURL(blob);
                   const link = document.createElement("a");
                   link.setAttribute("href", url);
-                  link.setAttribute("download", `Log_Beban_${startInput}_to_${endInput}.csv`);
+                  
+                  // Menyesuaikan nama file dengan mode unduhan
+                  const fileName = isDownloadAll 
+                    ? `Log_Beban_Keseluruhan_Data.csv` 
+                    : `Log_Beban_${startInput}_to_${endInput}.csv`;
+                  
+                  link.setAttribute("download", fileName);
                   document.body.appendChild(link);
                   link.click();
                   document.body.removeChild(link);
@@ -522,7 +544,6 @@
                   statusText.classList.replace('text-emerald-600', 'text-red-500');
               });
         });
-
     </script>
 </body>
 </html>
