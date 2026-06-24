@@ -19,6 +19,8 @@
 </head>
 <body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans p-6 transition-colors duration-300">
 
+    <!-- Konten HTML Body Tetap Sama (Diabaikan agar lebih ringkas, gunakan HTML aslinya) -->
+    <!-- (Salin struktur div, header, dan layout dari file asli Anda ke bagian ini) -->
     <div class="max-w-6xl mx-auto">
         <header class="mb-8 border-b dark:border-slate-800 pb-4 flex justify-between items-center">
             <div>
@@ -143,7 +145,6 @@
                     </tbody>
                 </table>
             </div>
-            <p class="text-xs text-slate-400 mt-3">* Metrik dihitung secara akumulatif (rolling) berdasarkan data yang masuk selama halaman ini terbuka.</p>
         </div>
 
         <div class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 mb-8">
@@ -165,9 +166,6 @@
                     <input type="datetime-local" id="filterEnd" class="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg p-2 text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
                 </div>
                 <button id="btnDownloadRange" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-6 rounded-lg transition shadow-sm flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
                     Unduh CSV
                 </button>
             </div>
@@ -185,22 +183,15 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // Variabel Global
         let activeThresholds = [];
         let lastFirebaseData = null;
         let sessionHistory = []; 
-        
-        // Status Unit (Default: true = Watt, false = kW)
         let isWatt = true; 
 
-        // Fungsi Helper Konversi Satuan
         function getMultiplier() { return isWatt ? 1000 : 1; }
         function getUnitString() { return isWatt ? 'W' : 'kW'; }
         function formatValue(val) { return (val * getMultiplier()).toFixed(isWatt ? 1 : 3); }
 
-        // ==========================================
-        // 2. INISIALISASI CHART.JS
-        // ==========================================
         const ctx = document.getElementById('bebanChart').getContext('2d');
         const bebanChart = new Chart(ctx, {
             type: 'line',
@@ -217,12 +208,7 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    y: { 
-                        beginAtZero: false,
-                        grid: { color: 'rgba(148, 163, 184, 0.1)' }, 
-                        ticks: { color: '#64748b' }, 
-                        title: { display: true, text: 'Daya (Watt)', color: '#64748b' } 
-                    },
+                    y: { beginAtZero: false, grid: { color: 'rgba(148, 163, 184, 0.1)' }, ticks: { color: '#64748b' }, title: { display: true, text: 'Daya (Watt)', color: '#64748b' } },
                     x: { grid: { color: 'rgba(148, 163, 184, 0.1)' }, ticks: { color: '#64748b' }, title: { display: true, text: 'Waktu', color: '#64748b' } }
                 },
                 plugins: { legend: { labels: { color: '#64748b' } } },
@@ -230,9 +216,6 @@
             }
         });
 
-        // ==========================================
-        // 3. SWITCH THEME & SWITCH UNIT
-        // ==========================================
         const themeToggleBtn = document.getElementById('themeToggle');
         themeToggleBtn.addEventListener('click', () => {
             if (document.documentElement.classList.contains('dark')) {
@@ -262,30 +245,18 @@
         document.getElementById('unitToggle').addEventListener('click', () => {
             isWatt = !isWatt;
             const unitStr = getUnitString();
-            
             document.getElementById('btnUnitLabel').innerText = isWatt ? 'Watt' : 'kW';
             document.querySelectorAll('.unit-label').forEach(el => el.innerText = unitStr);
-            
             bebanChart.options.scales.y.title.text = `Daya (${isWatt ? 'Watt' : 'Kilowatt'})`;
-            bebanChart.data.datasets[0].label = `Aktual (${unitStr})`;
-            bebanChart.data.datasets[1].label = `Prediksi 15m (${unitStr})`;
-            bebanChart.data.datasets[2].label = `Prediksi 1 Jam (${unitStr})`;
-            bebanChart.data.datasets[3].label = `Prediksi 24 Jam (${unitStr})`;
-
             rebuildChartAndMetrics();
             if (lastFirebaseData) updateCards(lastFirebaseData);
         });
 
-        // ==========================================
-        // 4. LOGIKA METRIK EVALUASI (RMSE, MAE, MAPE)
-        // ==========================================
         function updateMetrics() {
             if (sessionHistory.length === 0) return;
-
             let se15 = 0, ae15 = 0, pe15 = 0;
             let se1h = 0, ae1h = 0, pe1h = 0;
             let se24 = 0, ae24 = 0, pe24 = 0;
-            
             let count = sessionHistory.length;
             const mult = getMultiplier();
 
@@ -294,26 +265,19 @@
                 let p15 = row.pred_15m * mult;
                 let p1h = row.pred_1h * mult;
                 let p24 = row.pred_24h * mult;
-
-                let e15 = act - p15;
-                let e1h = act - p1h;
-                let e24 = act - p24;
-
+                let e15 = act - p15; let e1h = act - p1h; let e24 = act - p24;
                 se15 += (e15 * e15); ae15 += Math.abs(e15); if(act > 0) pe15 += Math.abs(e15 / act);
                 se1h += (e1h * e1h); ae1h += Math.abs(e1h); if(act > 0) pe1h += Math.abs(e1h / act);
                 se24 += (e24 * e24); ae24 += Math.abs(e24); if(act > 0) pe24 += Math.abs(e24 / act);
             });
 
             const dec = isWatt ? 1 : 4; 
-
             document.getElementById('metrik-rmse-15m').innerText = Math.sqrt(se15 / count).toFixed(dec);
             document.getElementById('metrik-mae-15m').innerText = (ae15 / count).toFixed(dec);
             document.getElementById('metrik-mape-15m').innerText = ((pe15 / count) * 100).toFixed(2) + '%';
-
             document.getElementById('metrik-rmse-1h').innerText = Math.sqrt(se1h / count).toFixed(dec);
             document.getElementById('metrik-mae-1h').innerText = (ae1h / count).toFixed(dec);
             document.getElementById('metrik-mape-1h').innerText = ((pe1h / count) * 100).toFixed(2) + '%';
-
             document.getElementById('metrik-rmse-24h').innerText = Math.sqrt(se24 / count).toFixed(dec);
             document.getElementById('metrik-mae-24h').innerText = (ae24 / count).toFixed(dec);
             document.getElementById('metrik-mape-24h').innerText = ((pe24 / count) * 100).toFixed(2) + '%';
@@ -333,9 +297,6 @@
             renderThresholds(); 
         }
 
-        // ==========================================
-        // 5. MANAJEMEN LIST THRESHOLD & PERINGATAN
-        // ==========================================
         document.getElementById('btnSetThreshold').addEventListener('click', () => {
             const targetSelect = document.getElementById('thresholdTarget');
             const targetKey = targetSelect.value;
@@ -343,7 +304,6 @@
             let limitVal = parseFloat(document.getElementById('thresholdValue').value);
 
             if (isNaN(limitVal) || limitVal <= 0) return;
-
             const rawValueKw = isWatt ? (limitVal / 1000) : limitVal;
             activeThresholds.push({ id: Date.now(), key: targetKey, text: targetText, rawKw: rawValueKw });
             renderThresholds();
@@ -353,22 +313,18 @@
         function renderThresholds() {
             const box = document.getElementById('thresholdBox');
             box.innerHTML = '';
-
             if (activeThresholds.length === 0) {
                 box.innerHTML = '<p class="text-sm text-slate-400 dark:text-slate-500 italic text-center py-4">Tidak ada batasan aktif.</p>';
                 return;
             }
-
             activeThresholds.forEach(t => {
                 const item = document.createElement('div');
                 item.className = "flex justify-between items-center bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs shadow-sm animate-fadeIn";
-                const displayVal = formatValue(t.rawKw);
-
                 item.innerHTML = `
                     <div class="truncate">
                         <span class="font-semibold text-slate-700 dark:text-slate-300">${t.text}</span>
                         <span class="text-slate-400 mx-1">≥</span>
-                        <span class="font-mono text-blue-600 dark:text-blue-400 font-bold">${displayVal} ${getUnitString()}</span>
+                        <span class="font-mono text-blue-600 dark:text-blue-400 font-bold">${formatValue(t.rawKw)} ${getUnitString()}</span>
                     </div>
                     <button onclick="removeThreshold(${t.id})" class="text-red-500 hover:text-red-700 dark:hover:text-red-400 font-bold ml-2 focus:outline-none transition-colors">✕</button>
                 `;
@@ -389,7 +345,6 @@
             ['card_aktual', 'card_pred_15m', 'card_pred_1h', 'card_pred_24h'].forEach(cid => {
                 document.getElementById(cid).classList.remove('bg-red-50', 'dark:bg-red-950/20', 'border-red-500');
             });
-            
             const alertBanner = document.getElementById('alertBanner');
             const alertList = document.getElementById('alertList');
             alertList.innerHTML = ''; 
@@ -398,11 +353,7 @@
             activeThresholds.forEach(t => {
                 const nilaiAktualKw = data[t.key];
                 if (nilaiAktualKw >= t.rawKw) {
-                    const dispAktual = formatValue(nilaiAktualKw);
-                    const dispBatas = formatValue(t.rawKw);
-                    const unit = getUnitString();
-
-                    statusPelanggaran.push(`Nilai <strong>${t.text}</strong> menyentuh <strong>${dispAktual} ${unit}</strong> (Batas Maksimal: ${dispBatas} ${unit})`);
+                    statusPelanggaran.push(`Nilai <strong>${t.text}</strong> menyentuh <strong>${formatValue(nilaiAktualKw)} ${getUnitString()}</strong> (Batas Maksimal: ${formatValue(t.rawKw)} ${getUnitString()})`);
                     const targetCard = document.getElementById(`card_${t.key}`);
                     if (targetCard) targetCard.classList.add('bg-red-50', 'dark:bg-red-950/20', 'border-red-500');
                 }
@@ -420,9 +371,6 @@
             }
         }
 
-        // ==========================================
-        // 6. UPDATE KARTU & FIREBASE REAL-TIME
-        // ==========================================
         function updateCards(data) {
             document.getElementById('valAktual').innerText = formatValue(data.aktual);
             document.getElementById('valPred15m').innerText = formatValue(data.pred_15m);
@@ -430,9 +378,23 @@
             document.getElementById('valPred24h').innerText = formatValue(data.pred_24h);
         }
 
+        // ==========================================
+        // PERBAIKAN: PARSING STRING DATA DARI ESP32
+        // ==========================================
         db.ref('sensor_listrik').on('value', (snapshot) => {
-            const data = snapshot.val();
+            let data = snapshot.val();
+            
             if (data) {
+                // Konversi string ke object jika ESP32 mengirimkannya sebagai string JSON
+                if (typeof data === 'string') {
+                    try {
+                        data = JSON.parse(data);
+                    } catch (e) {
+                        console.error("Gagal membaca struktur JSON dari Firebase:", e);
+                        return;
+                    }
+                }
+
                 lastFirebaseData = data; 
                 sessionHistory.push(data);
                 
@@ -459,90 +421,69 @@
         });
 
         // ==========================================
-        // 7. UNDUH CSV (RENTANG WAKTU ATAU KESELURUHAN)
+        // PERBAIKAN LOGIKA UNDUH CSV (MENGAKOMODASI STRING)
         // ==========================================
         document.getElementById('btnDownloadRange').addEventListener('click', () => {
             const startInput = document.getElementById('filterStart').value;
             const endInput = document.getElementById('filterEnd').value;
             const statusText = document.getElementById('downloadStatus');
 
-            // Logika pengecekan input waktu
             let isDownloadAll = false;
             if (!startInput && !endInput) {
-                // Jika keduanya kosong, aktifkan mode unduh semua data
                 isDownloadAll = true;
             } else if (!startInput || !endInput) {
-                // Jika hanya salah satu yang diisi, beri peringatan
                 alert("Mohon lengkapi KEDUA rentang waktu (Mulai dan Sampai) jika ingin memfilter data, ATAU kosongkan keduanya untuk mengunduh seluruh data.");
                 return;
             }
 
             statusText.classList.remove('hidden');
             statusText.classList.replace('text-red-500', 'text-emerald-600');
-            statusText.innerText = isDownloadAll 
-                ? "Mengambil seluruh data riwayat dari Firebase (mungkin butuh waktu)..." 
-                : "Mengambil data riwayat berdasarkan rentang waktu...";
+            statusText.innerText = isDownloadAll ? "Mengambil seluruh data riwayat..." : "Mengambil data riwayat...";
 
-            // Menentukan Query Firebase berdasarkan mode
             let query = db.ref('sensor_history').orderByChild('timestamp');
-            
             if (!isDownloadAll) {
-                const startTimestamp = new Date(startInput).getTime();
-                const endTimestamp = new Date(endInput).getTime();
-                query = query.startAt(startTimestamp).endAt(endTimestamp);
+                query = query.startAt(new Date(startInput).getTime()).endAt(new Date(endInput).getTime());
             }
 
-            // Mengeksekusi Query
-            query.once('value')
-              .then((snapshot) => {
-                  const historyData = snapshot.val();
-                  if (!historyData) {
-                      statusText.innerText = isDownloadAll 
-                        ? "Belum ada riwayat data di dalam database." 
-                        : "Data tidak ditemukan pada rentang waktu tersebut.";
-                      setTimeout(() => statusText.classList.add('hidden'), 3000);
-                      return;
-                  }
+            query.once('value').then((snapshot) => {
+                const historyData = snapshot.val();
+                if (!historyData) {
+                    statusText.innerText = "Data tidak ditemukan.";
+                    setTimeout(() => statusText.classList.add('hidden'), 3000);
+                    return;
+                }
 
-                  const unit = getUnitString();
-                  const mult = getMultiplier();
-                  const dec = isWatt ? 1 : 4;
+                const unit = getUnitString();
+                const mult = getMultiplier();
+                const dec = isWatt ? 1 : 4;
+                let csvContent = `Tanggal & Waktu,Beban Aktual (${unit}),Prediksi +15m (${unit}),Prediksi +1h (${unit}),Prediksi +24h (${unit})\n`;
+                
+                // Perbaikan: Parse string menjadi object pada setiap row sebelum diurutkan
+                const dataArray = Object.values(historyData).map(row => {
+                    return typeof row === 'string' ? JSON.parse(row) : row;
+                }).sort((a, b) => a.timestamp - b.timestamp);
 
-                  let csvContent = `Tanggal & Waktu,Beban Aktual (${unit}),Prediksi +15m (${unit}),Prediksi +1h (${unit}),Prediksi +24h (${unit})\n`;
-                  
-                  // Mengurutkan data berdasarkan timestamp (waktu terlama ke terbaru)
-                  const dataArray = Object.values(historyData).sort((a, b) => a.timestamp - b.timestamp);
+                dataArray.forEach(rowObj => {
+                    const dateObj = new Date(rowObj.timestamp);
+                    const fmtDate = dateObj.toLocaleString('id-ID').replace(',', '');
+                    csvContent += `${fmtDate},${(rowObj.aktual * mult).toFixed(dec)},${(rowObj.pred_15m * mult).toFixed(dec)},${(rowObj.pred_1h * mult).toFixed(dec)},${(rowObj.pred_24h * mult).toFixed(dec)}\n`;
+                });
 
-                  dataArray.forEach(row => {
-                      const dateObj = new Date(row.timestamp);
-                      const fmtDate = dateObj.toLocaleString('id-ID').replace(',', '');
-                      csvContent += `${fmtDate},${(row.aktual * mult).toFixed(dec)},${(row.pred_15m * mult).toFixed(dec)},${(row.pred_1h * mult).toFixed(dec)},${(row.pred_24h * mult).toFixed(dec)}\n`;
-                  });
-
-                  // Trigger proses unduhan file
-                  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                  const url = URL.createObjectURL(blob);
-                  const link = document.createElement("a");
-                  link.setAttribute("href", url);
-                  
-                  // Menyesuaikan nama file dengan mode unduhan
-                  const fileName = isDownloadAll 
-                    ? `Log_Beban_Keseluruhan_Data.csv` 
-                    : `Log_Beban_${startInput}_to_${endInput}.csv`;
-                  
-                  link.setAttribute("download", fileName);
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                  
-                  statusText.innerText = "Unduhan berhasil disiapkan!";
-                  setTimeout(() => statusText.classList.add('hidden'), 3000);
-              })
-              .catch(err => {
-                  console.error(err);
-                  statusText.innerText = "Terjadi kesalahan saat mengambil data.";
-                  statusText.classList.replace('text-emerald-600', 'text-red-500');
-              });
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", isDownloadAll ? `Log_Beban_Keseluruhan_Data.csv` : `Log_Beban_${startInput}_to_${endInput}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                statusText.innerText = "Unduhan berhasil disiapkan!";
+                setTimeout(() => statusText.classList.add('hidden'), 3000);
+            }).catch(err => {
+                statusText.innerText = "Terjadi kesalahan saat mengambil data.";
+                statusText.classList.replace('text-emerald-600', 'text-red-500');
+            });
         });
     </script>
 </body>
