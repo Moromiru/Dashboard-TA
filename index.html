@@ -19,8 +19,6 @@
 </head>
 <body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 font-sans p-6 transition-colors duration-300">
 
-    <!-- Konten HTML Body Tetap Sama (Diabaikan agar lebih ringkas, gunakan HTML aslinya) -->
-    <!-- (Salin struktur div, header, dan layout dari file asli Anda ke bagian ini) -->
     <div class="max-w-6xl mx-auto">
         <header class="mb-8 border-b dark:border-slate-800 pb-4 flex justify-between items-center">
             <div>
@@ -188,8 +186,10 @@
         let sessionHistory = []; 
         let isWatt = true; 
 
-        function getMultiplier() { return isWatt ? 1000 : 1; }
+        // PERBAIKAN 1: Pengali Unit yang Benar (Data asli dari ESP32 sudah berwujud Watt)
+        function getMultiplier() { return isWatt ? 1 : 0.001; }
         function getUnitString() { return isWatt ? 'W' : 'kW'; }
+        // Untuk Watt tampilkan 1 angka di belakang koma, untuk kW tampilkan 3 angka di belakang koma
         function formatValue(val) { return (val * getMultiplier()).toFixed(isWatt ? 1 : 3); }
 
         const ctx = document.getElementById('bebanChart').getContext('2d');
@@ -248,16 +248,25 @@
             document.getElementById('btnUnitLabel').innerText = isWatt ? 'Watt' : 'kW';
             document.querySelectorAll('.unit-label').forEach(el => el.innerText = unitStr);
             bebanChart.options.scales.y.title.text = `Daya (${isWatt ? 'Watt' : 'Kilowatt'})`;
+            
+            bebanChart.data.datasets[0].label = `Aktual (${unitStr})`;
+            bebanChart.data.datasets[1].label = `Prediksi 15m (${unitStr})`;
+            bebanChart.data.datasets[2].label = `Prediksi 1 Jam (${unitStr})`;
+            bebanChart.data.datasets[3].label = `Prediksi 24 Jam (${unitStr})`;
+
             rebuildChartAndMetrics();
             if (lastFirebaseData) updateCards(lastFirebaseData);
         });
 
+        // PERBAIKAN 2: Logika Perhitungan Metrik untuk Mencegah Nilai Error MAPE Meledak
         function updateMetrics() {
             if (sessionHistory.length === 0) return;
             let se15 = 0, ae15 = 0, pe15 = 0;
             let se1h = 0, ae1h = 0, pe1h = 0;
             let se24 = 0, ae24 = 0, pe24 = 0;
+            
             let count = sessionHistory.length;
+            let countMape15 = 0, countMape1h = 0, countMape24 = 0;
             const mult = getMultiplier();
 
             sessionHistory.forEach(row => {
@@ -265,33 +274,59 @@
                 let p15 = row.pred_15m * mult;
                 let p1h = row.pred_1h * mult;
                 let p24 = row.pred_24h * mult;
+                
                 let e15 = act - p15; let e1h = act - p1h; let e24 = act - p24;
-                se15 += (e15 * e15); ae15 += Math.abs(e15); if(act > 0) pe15 += Math.abs(e15 / act);
-                se1h += (e1h * e1h); ae1h += Math.abs(e1h); if(act > 0) pe1h += Math.abs(e1h / act);
-                se24 += (e24 * e24); ae24 += Math.abs(e24); if(act > 0) pe24 += Math.abs(e24 / act);
+                
+                se15 += (e15 * e15); ae15 += Math.abs(e15); 
+                se1h += (e1h * e1h); ae1h += Math.abs(e1h); 
+                se24 += (e24 * e24); ae24 += Math.abs(e24); 
+
+                // Threshold: Hanya hitung % error jika Beban Aktual valid (di atas noise) untuk menghindari Infinity Error (300,000%)
+                let threshold_watt = isWatt ? 1.0 : 0.001; 
+                if(act > threshold_watt) { 
+                    pe15 += Math.abs(e15 / act); countMape15++;
+                    pe1h += Math.abs(e1h / act); countMape1h++;
+                    pe24 += Math.abs(e24 / act); countMape24++;
+                }
             });
 
             const dec = isWatt ? 1 : 4; 
             document.getElementById('metrik-rmse-15m').innerText = Math.sqrt(se15 / count).toFixed(dec);
             document.getElementById('metrik-mae-15m').innerText = (ae15 / count).toFixed(dec);
-            document.getElementById('metrik-mape-15m').innerText = ((pe15 / count) * 100).toFixed(2) + '%';
+            document.getElementById('metrik-mape-15m').innerText = countMape15 > 0 ? ((pe15 / countMape15) * 100).toFixed(2) + '%' : '0.00%';
+            
             document.getElementById('metrik-rmse-1h').innerText = Math.sqrt(se1h / count).toFixed(dec);
             document.getElementById('metrik-mae-1h').innerText = (ae1h / count).toFixed(dec);
-            document.getElementById('metrik-mape-1h').innerText = ((pe1h / count) * 100).toFixed(2) + '%';
+            document.getElementById('metrik-mape-1h').innerText = countMape1h > 0 ? ((pe1h / countMape1h) * 100).toFixed(2) + '%' : '0.00%';
+            
             document.getElementById('metrik-rmse-24h').innerText = Math.sqrt(se24 / count).toFixed(dec);
             document.getElementById('metrik-mae-24h').innerText = (ae24 / count).toFixed(dec);
-            document.getElementById('metrik-mape-24h').innerText = ((pe24 / count) * 100).toFixed(2) + '%';
+            document.getElementById('metrik-mape-24h').innerText = countMape24 > 0 ? ((pe24 / countMape24) * 100).toFixed(2) + '%' : '0.00%';
         }
 
+        // PERBAIKAN 3: Membersihkan Label saat Menggambar Ulang Grafik & Transisi
         function rebuildChartAndMetrics() {
             bebanChart.data.datasets.forEach(dataset => dataset.data = []);
+            bebanChart.data.labels = []; // <-- Tambahan wajib untuk mengatasi bug penumpukan label
+            
             const mult = getMultiplier();
             sessionHistory.forEach(row => {
+                const dateObj = new Date(row.timestamp);
+                const timeString = dateObj.getHours().toString().padStart(2, '0') + ':' + dateObj.getMinutes().toString().padStart(2, '0') + ':' + dateObj.getSeconds().toString().padStart(2, '0');
+                
+                bebanChart.data.labels.push(timeString);
                 bebanChart.data.datasets[0].data.push(row.aktual * mult);
                 bebanChart.data.datasets[1].data.push(row.pred_15m * mult);
                 bebanChart.data.datasets[2].data.push(row.pred_1h * mult);
                 bebanChart.data.datasets[3].data.push(row.pred_24h * mult);
             });
+            
+            // Batasi 20 data agar chart tidak tumpang tindih
+            while (bebanChart.data.labels.length > 20) {
+                bebanChart.data.labels.shift();
+                bebanChart.data.datasets.forEach(dataset => dataset.data.shift());
+            }
+
             bebanChart.update();
             updateMetrics();
             renderThresholds(); 
@@ -310,6 +345,7 @@
             if (lastFirebaseData) checkAllThresholds(lastFirebaseData);
         });
 
+        // PERBAIKAN 4: Menyesuaikan Formatter pada Alert Threshold
         function renderThresholds() {
             const box = document.getElementById('thresholdBox');
             box.innerHTML = '';
@@ -324,7 +360,7 @@
                     <div class="truncate">
                         <span class="font-semibold text-slate-700 dark:text-slate-300">${t.text}</span>
                         <span class="text-slate-400 mx-1">≥</span>
-                        <span class="font-mono text-blue-600 dark:text-blue-400 font-bold">${formatValue(t.rawKw)} ${getUnitString()}</span>
+                        <span class="font-mono text-blue-600 dark:text-blue-400 font-bold">${formatValue(t.rawKw * 1000)} ${getUnitString()}</span>
                     </div>
                     <button onclick="removeThreshold(${t.id})" class="text-red-500 hover:text-red-700 dark:hover:text-red-400 font-bold ml-2 focus:outline-none transition-colors">✕</button>
                 `;
@@ -351,9 +387,9 @@
             let statusPelanggaran = [];
 
             activeThresholds.forEach(t => {
-                const nilaiAktualKw = data[t.key];
+                const nilaiAktualKw = data[t.key] / 1000; // Karena data asli selalu Watt, bagi 1000 agar setara dgn rawKw
                 if (nilaiAktualKw >= t.rawKw) {
-                    statusPelanggaran.push(`Nilai <strong>${t.text}</strong> menyentuh <strong>${formatValue(nilaiAktualKw)} ${getUnitString()}</strong> (Batas Maksimal: ${formatValue(t.rawKw)} ${getUnitString()})`);
+                    statusPelanggaran.push(`Nilai <strong>${t.text}</strong> menyentuh <strong>${formatValue(data[t.key])} ${getUnitString()}</strong> (Batas Maksimal: ${formatValue(t.rawKw * 1000)} ${getUnitString()})`);
                     const targetCard = document.getElementById(`card_${t.key}`);
                     if (targetCard) targetCard.classList.add('bg-red-50', 'dark:bg-red-950/20', 'border-red-500');
                 }
@@ -378,14 +414,10 @@
             document.getElementById('valPred24h').innerText = formatValue(data.pred_24h);
         }
 
-        // ==========================================
-        // PERBAIKAN: PARSING STRING DATA DARI ESP32
-        // ==========================================
         db.ref('sensor_listrik').on('value', (snapshot) => {
             let data = snapshot.val();
             
             if (data) {
-                // Konversi string ke object jika ESP32 mengirimkannya sebagai string JSON
                 if (typeof data === 'string') {
                     try {
                         data = JSON.parse(data);
@@ -420,9 +452,6 @@
             }
         });
 
-        // ==========================================
-        // PERBAIKAN LOGIKA UNDUH CSV (MENGAKOMODASI STRING)
-        // ==========================================
         document.getElementById('btnDownloadRange').addEventListener('click', () => {
             const startInput = document.getElementById('filterStart').value;
             const endInput = document.getElementById('filterEnd').value;
@@ -458,7 +487,6 @@
                 const dec = isWatt ? 1 : 4;
                 let csvContent = `Tanggal & Waktu,Beban Aktual (${unit}),Prediksi +15m (${unit}),Prediksi +1h (${unit}),Prediksi +24h (${unit})\n`;
                 
-                // Perbaikan: Parse string menjadi object pada setiap row sebelum diurutkan
                 const dataArray = Object.values(historyData).map(row => {
                     return typeof row === 'string' ? JSON.parse(row) : row;
                 }).sort((a, b) => a.timestamp - b.timestamp);
