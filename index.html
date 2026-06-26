@@ -46,6 +46,7 @@
                                 <option value="aktual">Beban Aktual</option>
                                 <option value="pred_15m">Prediksi +15 Menit</option>
                                 <option value="pred_1h">Prediksi +1 Jam</option>
+                                <option value="pred_12h">Prediksi +12 Jam</option>
                                 <option value="pred_24h">Prediksi +24 Jam</option>
                             </select>
                         </div>
@@ -78,7 +79,7 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+        <div class="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-5 gap-6 mb-8">
             <div id="card_aktual" class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 transition-all duration-200">
                 <h3 class="text-sm font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Beban Aktual</h3>
                 <div class="mt-2 flex items-baseline gap-2">
@@ -97,6 +98,13 @@
                 <h3 class="text-sm font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Prediksi +1 Jam</h3>
                 <div class="mt-2 flex items-baseline gap-2">
                     <span id="valPred1h" class="text-4xl font-bold text-rose-500 dark:text-rose-400">0.0</span>
+                    <span class="text-slate-500 dark:text-slate-400 font-medium unit-label">W</span>
+                </div>
+            </div>
+            <div id="card_pred_12h" class="bg-white dark:bg-slate-800 p-6 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 transition-all duration-200">
+                <h3 class="text-sm font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Prediksi +12 Jam</h3>
+                <div class="mt-2 flex items-baseline gap-2">
+                    <span id="valPred12h" class="text-4xl font-bold text-indigo-500 dark:text-indigo-400">0.0</span>
                     <span class="text-slate-500 dark:text-slate-400 font-medium unit-label">W</span>
                 </div>
             </div>
@@ -133,6 +141,12 @@
                             <td class="py-3 px-4 text-slate-600 dark:text-slate-400 font-mono" id="metrik-rmse-1h">0.00</td>
                             <td class="py-3 px-4 text-slate-600 dark:text-slate-400 font-mono" id="metrik-mae-1h">0.00</td>
                             <td class="py-3 px-4 text-rose-600 dark:text-rose-400 font-medium font-mono" id="metrik-mape-1h">0.00%</td>
+                        </tr>
+                        <tr class="border-b border-slate-100 dark:border-slate-800">
+                            <td class="py-3 px-4 font-medium text-slate-700 dark:text-slate-300">+12 Jam</td>
+                            <td class="py-3 px-4 text-slate-600 dark:text-slate-400 font-mono" id="metrik-rmse-12h">0.00</td>
+                            <td class="py-3 px-4 text-slate-600 dark:text-slate-400 font-mono" id="metrik-mae-12h">0.00</td>
+                            <td class="py-3 px-4 text-indigo-600 dark:text-indigo-400 font-medium font-mono" id="metrik-mape-12h">0.00%</td>
                         </tr>
                         <tr class="border-b border-slate-100 dark:border-slate-800 bg-purple-50/30 dark:bg-purple-900/10">
                             <td class="py-3 px-4 font-medium text-slate-700 dark:text-slate-300">+24 Jam</td>
@@ -201,6 +215,7 @@
                     { label: 'Aktual (W)', borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.05)', data: [], tension: 0.3, fill: true },
                     { label: 'Prediksi 15m (W)', borderColor: '#f59e0b', borderDash: [5, 5], data: [], tension: 0.3 },
                     { label: 'Prediksi 1 Jam (W)', borderColor: '#e11d48', borderDash: [2, 2], data: [], tension: 0.3 },
+                    { label: 'Prediksi 12 Jam (W)', borderColor: '#6366f1', borderDash: [3, 3], data: [], tension: 0.3 },
                     { label: 'Prediksi 24 Jam (W)', borderColor: '#9333ea', borderDash: [4, 1], data: [], tension: 0.3 }
                 ]
             },
@@ -252,7 +267,8 @@
             bebanChart.data.datasets[0].label = `Aktual (${unitStr})`;
             bebanChart.data.datasets[1].label = `Prediksi 15m (${unitStr})`;
             bebanChart.data.datasets[2].label = `Prediksi 1 Jam (${unitStr})`;
-            bebanChart.data.datasets[3].label = `Prediksi 24 Jam (${unitStr})`;
+            bebanChart.data.datasets[3].label = `Prediksi 12 Jam (${unitStr})`;
+            bebanChart.data.datasets[4].label = `Prediksi 24 Jam (${unitStr})`;
 
             rebuildChartAndMetrics();
             if (lastFirebaseData) updateCards(lastFirebaseData);
@@ -263,22 +279,25 @@
             if (sessionHistory.length === 0) return;
             let se15 = 0, ae15 = 0, pe15 = 0;
             let se1h = 0, ae1h = 0, pe1h = 0;
+            let se12h = 0, ae12h = 0, pe12h = 0;
             let se24 = 0, ae24 = 0, pe24 = 0;
             
             let count = sessionHistory.length;
-            let countMape15 = 0, countMape1h = 0, countMape24 = 0;
+            let countMape15 = 0, countMape1h = 0, countMape12h = 0, countMape24 = 0;
             const mult = getMultiplier();
 
             sessionHistory.forEach(row => {
                 let act = row.aktual * mult;
                 let p15 = row.pred_15m * mult;
                 let p1h = row.pred_1h * mult;
+                let p12h = row.pred_12h * mult;
                 let p24 = row.pred_24h * mult;
                 
-                let e15 = act - p15; let e1h = act - p1h; let e24 = act - p24;
+                let e15 = act - p15; let e1h = act - p1h; let e12h = act - p12h; let e24 = act - p24;
                 
                 se15 += (e15 * e15); ae15 += Math.abs(e15); 
                 se1h += (e1h * e1h); ae1h += Math.abs(e1h); 
+                se12h += (e12h * e12h); ae12h += Math.abs(e12h);
                 se24 += (e24 * e24); ae24 += Math.abs(e24); 
 
                 // Threshold: Hanya hitung % error jika Beban Aktual valid (di atas noise) untuk menghindari Infinity Error (300,000%)
@@ -286,6 +305,7 @@
                 if(act > threshold_watt) { 
                     pe15 += Math.abs(e15 / act); countMape15++;
                     pe1h += Math.abs(e1h / act); countMape1h++;
+                    pe12h += Math.abs(e12h / act); countMape12h++;
                     pe24 += Math.abs(e24 / act); countMape24++;
                 }
             });
@@ -298,6 +318,10 @@
             document.getElementById('metrik-rmse-1h').innerText = Math.sqrt(se1h / count).toFixed(dec);
             document.getElementById('metrik-mae-1h').innerText = (ae1h / count).toFixed(dec);
             document.getElementById('metrik-mape-1h').innerText = countMape1h > 0 ? ((pe1h / countMape1h) * 100).toFixed(2) + '%' : '0.00%';
+            
+            document.getElementById('metrik-rmse-12h').innerText = Math.sqrt(se12h / count).toFixed(dec);
+            document.getElementById('metrik-mae-12h').innerText = (ae12h / count).toFixed(dec);
+            document.getElementById('metrik-mape-12h').innerText = countMape12h > 0 ? ((pe12h / countMape12h) * 100).toFixed(2) + '%' : '0.00%';
             
             document.getElementById('metrik-rmse-24h').innerText = Math.sqrt(se24 / count).toFixed(dec);
             document.getElementById('metrik-mae-24h').innerText = (ae24 / count).toFixed(dec);
@@ -318,7 +342,8 @@
                 bebanChart.data.datasets[0].data.push(row.aktual * mult);
                 bebanChart.data.datasets[1].data.push(row.pred_15m * mult);
                 bebanChart.data.datasets[2].data.push(row.pred_1h * mult);
-                bebanChart.data.datasets[3].data.push(row.pred_24h * mult);
+                bebanChart.data.datasets[3].data.push(row.pred_12h * mult);
+                bebanChart.data.datasets[4].data.push(row.pred_24h * mult);
             });
             
             // Batasi 20 data agar chart tidak tumpang tindih
@@ -371,14 +396,14 @@
         window.removeThreshold = function(id) {
             activeThresholds = activeThresholds.filter(item => item.id !== id);
             renderThresholds();
-            ['card_aktual', 'card_pred_15m', 'card_pred_1h', 'card_pred_24h'].forEach(cid => {
+            ['card_aktual', 'card_pred_15m', 'card_pred_1h', 'card_pred_12h', 'card_pred_24h'].forEach(cid => {
                 document.getElementById(cid).classList.remove('bg-red-50', 'dark:bg-red-950/20', 'border-red-500');
             });
             if (lastFirebaseData) checkAllThresholds(lastFirebaseData);
         }
 
         function checkAllThresholds(data) {
-            ['card_aktual', 'card_pred_15m', 'card_pred_1h', 'card_pred_24h'].forEach(cid => {
+            ['card_aktual', 'card_pred_15m', 'card_pred_1h', 'card_pred_12h', 'card_pred_24h'].forEach(cid => {
                 document.getElementById(cid).classList.remove('bg-red-50', 'dark:bg-red-950/20', 'border-red-500');
             });
             const alertBanner = document.getElementById('alertBanner');
@@ -411,6 +436,7 @@
             document.getElementById('valAktual').innerText = formatValue(data.aktual);
             document.getElementById('valPred15m').innerText = formatValue(data.pred_15m);
             document.getElementById('valPred1h').innerText = formatValue(data.pred_1h);
+            document.getElementById('valPred12h').innerText = formatValue(data.pred_12h);
             document.getElementById('valPred24h').innerText = formatValue(data.pred_24h);
         }
 
@@ -442,7 +468,8 @@
                 bebanChart.data.datasets[0].data.push(data.aktual * mult);
                 bebanChart.data.datasets[1].data.push(data.pred_15m * mult);
                 bebanChart.data.datasets[2].data.push(data.pred_1h * mult);
-                bebanChart.data.datasets[3].data.push(data.pred_24h * mult);
+                bebanChart.data.datasets[3].data.push(data.pred_12h * mult);
+                bebanChart.data.datasets[4].data.push(data.pred_24h * mult);
 
                 if (bebanChart.data.labels.length > 20) {
                     bebanChart.data.labels.shift();
@@ -485,7 +512,7 @@
                 const unit = getUnitString();
                 const mult = getMultiplier();
                 const dec = isWatt ? 1 : 4;
-                let csvContent = `Tanggal & Waktu,Beban Aktual (${unit}),Prediksi +15m (${unit}),Prediksi +1h (${unit}),Prediksi +24h (${unit})\n`;
+                let csvContent = `Tanggal & Waktu,Beban Aktual (${unit}),Prediksi +15m (${unit}),Prediksi +1h (${unit}),Prediksi +12h (${unit}),Prediksi +24h (${unit})\n`;
                 
                 const dataArray = Object.values(historyData).map(row => {
                     return typeof row === 'string' ? JSON.parse(row) : row;
@@ -494,7 +521,7 @@
                 dataArray.forEach(rowObj => {
                     const dateObj = new Date(rowObj.timestamp);
                     const fmtDate = dateObj.toLocaleString('id-ID').replace(',', '');
-                    csvContent += `${fmtDate},${(rowObj.aktual * mult).toFixed(dec)},${(rowObj.pred_15m * mult).toFixed(dec)},${(rowObj.pred_1h * mult).toFixed(dec)},${(rowObj.pred_24h * mult).toFixed(dec)}\n`;
+                    csvContent += `${fmtDate},${(rowObj.aktual * mult).toFixed(dec)},${(rowObj.pred_15m * mult).toFixed(dec)},${(rowObj.pred_1h * mult).toFixed(dec)},${(rowObj.pred_12h * mult).toFixed(dec)},${(rowObj.pred_24h * mult).toFixed(dec)}\n`;
                 });
 
                 const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
